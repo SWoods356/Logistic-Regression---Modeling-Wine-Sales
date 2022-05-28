@@ -1,0 +1,585 @@
+---
+title: "Woods_Modeling_3"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+```{r}
+library(dplyr)
+library(flux)
+library(ggplot2)
+library(gridExtra)
+library(knitr)
+library(rockchalk)
+library(tidyverse)
+library(ggthemes)
+library(ggpubr)
+library(RColorBrewer)
+```
+
+
+```{r}
+setwd("C:/Users/Swood/OneDrive/Northwestern/410 Supervised Learning/Assignment3")
+
+mydata <- read.csv("wine_train.csv")
+
+
+```
+
+```{r}
+
+str(mydata)
+
+dim(mydata)
+
+```
+
+## 1. DATA EXPLORATION 
+
+```{r}
+
+summary(mydata)
+
+```
+The are a number of columns with a considerable amount of NA's
+
+```{r}
+#Generate a plot of all predictors
+
+
+ggplot(gather(mydata, variable, value), aes(x=value)) + geom_density() +
+  facet_wrap(~variable, scales = "free")
+
+```
+
+
+```{r}
+ggplot(gather(mydata, variable, value), aes(x=value)) + geom_boxplot() +
+  facet_wrap(~variable, scales = "free")
+```
+
+Let's take a closer look at the target variable:
+
+```{r}
+hist(mydata$TARGET, xlab = "Sales", main = "Distribution of Sales", col = brewer.pal( n = 8, name = "Set2"))
+
+
+```
+
+```{r}
+
+b1 <- boxplot(mydata$TARGET, col = "plum4", main = "Sale Plot", 
+        ylab = "Frequency", notch = TRUE)
+
+b1
+```
+
+#subset dataframe with no NA's
+
+
+
+```{r}
+
+data1 <- na.omit(mydata)
+
+dim(data1)
+
+
+library(corrplot)
+
+data1.cor <- cor(data1)
+
+library("Hmisc")
+
+data1.rcorr = rcorr(as.matrix(data1))
+
+data1.coeff = data1.rcorr$r
+
+corrplot(data1.cor)
+```
+
+## Data Preparation
+
+
+```{r}
+#Get Column Names with NAs
+
+na_cols <- c(names(which(colSums(is.na(mydata))>0)))
+
+na_cols
+```
+
+
+```{r}
+# Flag Missing Values with new Dummy Columns (1 = missing value)
+
+mydata$ResidualSugarFLAG <- ifelse(is.na(mydata$ResidualSugar), 1, 0)
+
+mydata$ChloridesFLAG <- ifelse(is.na(mydata$Chlorides), 1, 0)
+
+mydata$FreeSulfurDioxideFLAG <- ifelse(is.na(mydata$FreeSulfurDioxide), 1, 0)
+
+mydata$TotalSulfurDioxideFLAG <- ifelse(is.na(mydata$TotalSulfurDioxide), 1, 0)
+
+mydata$pHFLAG <- ifelse(is.na(mydata$pH), 1, 0)
+
+mydata$SulphatesFLAG <- ifelse(is.na(mydata$Sulphates), 1, 0)
+
+mydata$AlcoholFLAG <- ifelse(is.na(mydata$Alcohol), 1, 0)
+
+mydata$STARSFLAG <- ifelse(is.na(mydata$STARS), 1, 0)
+
+
+head(mydata)
+
+```
+
+
+
+
+```{r}
+cols <- c()
+
+for (i in na_cols){
+  cols <- append(cols, paste(i,'FLAG', sep = ""))
+}
+
+
+cols
+
+cols[1]
+```
+
+
+```{r}
+#see connection to target
+
+ggplot(data = mydata) + aes(x = ResidualSugar, y = TARGET) +
+    geom_point(color = "cadetblue") + ggtitle("ResidualSugar vs TARGET") +
+    ylab("TARGET") + xlab("ResidualSugar")+
+    theme(legend.position = c(), legend.background = element_rect())
+
+ggplot(data = mydata) + aes(x = ChloridesFLAG, y = TARGET) +
+    geom_point(color = "cadetblue") + ggtitle("ChloridesFlag vs TARGET") +
+    ylab("TARGET") + xlab("ChloridesFLAG")+
+    theme(legend.position = c(), legend.background = element_rect())
+
+```
+
+```{r}
+#Impute with Mean
+
+for(i in 1:ncol(mydata)) {
+  mydata[ , i][is.na(mydata[ , i])] <- mean(mydata[ , i], na.rm=TRUE)
+}
+
+names(which(colSums(is.na(mydata))>0))
+
+```
+
+```{r}
+# Re exmaine correlations
+
+data2.cor <- cor(mydata)
+
+library("Hmisc")
+
+data2.rcorr = rcorr(as.matrix(mydata))
+
+data2.coeff = data2.rcorr$r
+
+corrplot(data2.cor)
+
+
+```
+LabelAppeal, AcidIndex, STARS, and STARSFLAG all have correlations with target
+
+
+## Build Models
+
+```{r}
+#create yes/no column for whether sale was made, this will be the new target column
+
+mydata$TARGET_BIN <- ifelse(mydata$TARGET == 0, 0, 1)
+
+head(mydata)
+
+```
+
+
+
+```{r}
+
+# linear model with four predictors
+
+summary(lr_md1 <- lm(TARGET_BIN ~ LabelAppeal + AcidIndex + STARS + STARSFLAG, data = mydata))
+```
+
+
+```{r}
+
+
+# linear model with all predictors
+
+summary(lr_md1 <- lm(TARGET_BIN ~ . -ï..INDEX - TARGET, data = mydata))
+
+```
+
+Adding other predictors did not really change training performance. Time for logistc regression:
+
+```{r}
+require(lessR)
+
+#model with four variables
+logmodel1 <- Logit(TARGET_BIN ~ LabelAppeal + AcidIndex + STARS + STARSFLAG, data = mydata)
+logmodel1
+
+
+
+
+```
+
+```{r}
+exp(-.4636) - 1
+exp(-.3933) - 1
+exp(2.5541) - 1
+exp(-4.4693) - 1
+
+
+```
+
+
+```{r}
+
+logmodel2 <- Logit(TARGET_BIN ~ LabelAppeal + AcidIndex + STARS + STARSFLAG + VolatileAcidity + TotalSulfurDioxide + pH, data = mydata)
+logmodel2
+
+
+
+```
+
+```{r}
+exp(-.4635) - 1
+exp(-0.3913) - 1
+
+```
+
+
+Adding additional variables did little for model performance, so logmodel1 will be my final model.
+
+## Test Prediction
+
+```{r}
+
+test <- read.csv("wine_test.csv")
+
+head(test)
+
+dim(test)
+
+```
+```{r}
+
+# formatting
+
+test$STARSFLAG <- ifelse(is.na(test$STARS), 1, 0)
+
+head(test)
+
+```
+
+```{r}
+#Impute with Mean
+
+for (i in 1:ncol(test)) {
+  test[ , i][is.na(test[ , i])] <- mean(test[ , i], na.rm=TRUE)
+}
+
+names(which(colSums(is.na(test))>0))
+```
+
+```{r}
+
+#predictions
+
+preds <- predict(logmodel1, test, type = "response")
+
+submit <- data_frame('INDEX' = test$ï..INDEX, 'P_TARGET' = preds)
+
+write_csv(submit, 'submission1.csv')
+
+
+```
+
+
+```{r}
+#predictions
+
+
+submit <- data_frame('Index' = test$ï..INDEX, 'x' = preds)
+
+submit$P_TARGET <- ifelse(submit$x > 0.50, 1, 0)
+
+submitbin <- data_frame('INDEX' = test$ï..INDEX, 'P_TARGET' = submit$P_TARGET)
+
+write_csv(submitbin, 'submission3.csv')
+
+
+```
+
+
+
+## Model Equation
+
+```{r}
+
+cc <- logmodel1$coefficients
+(eqn <- paste("P_TARGET = 1 - 1/(1 + exp(", paste(round(cc[1],5), paste(round(cc[-1],5), names(cc[-1]), sep=" * ", collapse=" + "), sep=" + "), "+ e))"))
+
+```
+## Assignment 4 - Hurdle Modeling - Starts Here
+
+```{r}
+
+library(pscl) # for hurdle function
+```
+
+
+
+```{r}
+
+mydata2 <- subset(mydata, select = c('TARGET_BIN', 'LabelAppeal' , 'AcidIndex' , 'STARS', 'STARSFLAG'))
+
+SummaryStats(mydata2)
+
+```
+
+The sd (not even sd**2) is great than the mean for multiple columns, so the negative binomial distirbution may produce the best results for the hurdle model.
+
+```{r}
+
+#histogram
+
+Histogram(TARGET, data = mydata)
+
+```
+
+```{r}
+#default hurdle model is with poisson distribution
+
+summary(hurdle1 <- hurdle(TARGET ~ LabelAppeal + AcidIndex + STARS + STARSFLAG, data = mydata))
+
+
+```
+
+
+
+
+```{r}
+#count of predicted zero values
+
+sum(predict(hurdle1, type = "prob")[,1])
+
+sum(mydata$TARGET < 1)
+
+max(mydata$TARGET)
+
+```
+
+```{r}
+
+sum(hurdle1$fitted.values < .1)
+
+```
+
+```{r}
+
+#install.packages("countreg", repos="http://R-Forge.R-project.org")
+library(countreg)
+rootogram(hurdle1, max = 8) # fit up to count 8
+
+```
+We see columns dipping below the zero mark between 3 and 5 wine sales, indicating the poisson model is underfitting these values. This can be improved with a negative binomial distribution?
+
+```{r}
+#hurdle model with negative binomial distribution
+
+summary(hurdle2 <- hurdle(TARGET ~ LabelAppeal + AcidIndex + STARS + STARSFLAG, data = mydata, dist = "negbin"))
+
+
+```
+```{r}
+
+rootogram(hurdle2, max = 8)
+
+```
+This looks identical to the prior model.
+
+```{r}
+
+AIC(hurdle1)
+
+AIC(hurdle2)
+
+
+```
+
+
+
+```{r}
+
+hurdle3 <- hurdle(TARGET ~ STARS, data = mydata, dist = "negbin")
+
+rootogram(hurdle3, max = 8)
+
+AIC(hurdle3)
+
+
+#reference:
+
+  #https://data.library.virginia.edu/getting-started-with-hurdle-models/
+```
+
+## Predict with Hurdle
+
+```{r}
+
+preds <- predict(hurdle2, test, type = "response")
+
+submit <- data_frame('INDEX' = test$ï..INDEX, 'P_TARGET' = preds)
+
+write_csv(submit, 'submission4.csv')
+
+```
+
+
+Edit predictions so predicted proportion of zeros matches proportion of zeros in test data
+
+
+```{r}
+
+#install.packages('janitor')
+
+library(janitor)
+
+tabyl(mydata, TARGET)
+
+
+
+```
+
+21.37% of records have zero sales.
+
+
+Let's see the proportion from logmodel1
+
+```{r}
+
+
+preds_log1 <- predict(logmodel1, test, type = "response")
+
+binary_preds_log1 <- ifelse(preds_log1 > 0.50, 1, 0)
+
+
+
+tabyl(binary_preds_log1)
+
+
+```
+
+Now let's see the proportion from hurdlemodel2
+
+
+
+```{r}
+
+#change cutoff to reach 21.37% proportion
+
+preds_hurdle2 <- predict(hurdle2, test, type = "response")
+
+
+binary_preds_hurdle2 <- ifelse(preds_hurdle2 < 1.54, 0, 1)
+
+
+tabyl(binary_preds_hurdle2)
+
+```
+
+
+```{r}
+
+
+table(binary_preds_log1, binary_preds_hurdle2)
+
+
+```
+
+
+
+
+This does not seem to predict zero values well, which is half the purpose of the model.
+
+
+```{r}
+
+
+preds_df <- data_frame('INDEX' = test$ï..INDEX, 'Binary_TARGET' = binary_preds_log1, 'Hurdle_Count' = preds_hurdle2)
+
+head(preds_df)
+
+
+
+
+```
+
+I am going to use the zero value predictions from my logmodel1 and the count predictions from the hurdle model.
+
+```{r}
+
+preds_df$P_TAGRET <- ifelse(preds_df$Binary_TARGET < 0.5, preds_df$Binary_TARGET, preds_df$Hurdle_Count )
+
+head(preds_df)
+
+
+```
+
+Lets see how this performs on the hurdle kaggle link
+
+```{r}
+
+submit <- data_frame('INDEX' = test$ï..INDEX, 'P_TARGET' = preds_df$P_TAGRET)
+
+write_csv(submit, 'submission5.csv')
+
+```
+
+It performed worse than the hurdle model. Maybe due to rounding zero probabilities to zero.
+
+
+CSV submission for HW4:
+```{r}
+#Round predictions from P_Target
+
+submit <- data_frame('INDEX' = test$ï..INDEX, 'P_TARGET' = round(preds_df$P_TAGRET))
+
+write_csv(submit, 'Woods_HW_4.csv')
+
+```
+
+
+CSV submission for CA6:
+
+```{r}
+
+submit <- data_frame('INDEX' = test$ï..INDEX, 'P_TARGET' = binary_preds_hurdle2, 'P_HOW_MANY' = round(preds_df$Hurdle_Count))
+
+write_csv(submit, 'Woods_CA_6.csv')
+
+```
+
+
+
+
